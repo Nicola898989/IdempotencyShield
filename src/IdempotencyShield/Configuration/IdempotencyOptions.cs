@@ -29,4 +29,26 @@ public class IdempotencyOptions
     /// If it returns false, the middleware will return 400 Bad Request.
     /// </summary>
     public Func<string, bool>? KeyValidator { get; set; }
+
+    /// <summary>
+    /// Maximum request body size in bytes to allow for payload validation hashing.
+    /// Helps prevent Denial-of-Service attacks by limiting memory usage.
+    /// Default is 10 MB.
+    /// </summary>
+    public long MaxRequestBodySize { get; set; } = 10 * 1024 * 1024;
+
+    /// <summary>
+    /// A set of response headers that should not be cached.
+    /// Header names are case-insensitive.
+    /// </summary>
+    public ISet<string> ExcludedHeaders { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Transfer-Encoding",
+        "Connection",
+        "Keep-Alive",
+        "Upgrade",
+        "Date",
+        "Set-Cookie",
+        "Authorization"
+    };
 }

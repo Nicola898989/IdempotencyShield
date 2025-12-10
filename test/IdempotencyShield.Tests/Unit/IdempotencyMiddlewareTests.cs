@@ -7,28 +7,29 @@ using IdempotencyShield.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace IdempotencyShield.Tests.Unit;
 
 public class IdempotencyMiddlewareTests
 {
-    private readonly Mock<IIdempotencyStore> _mockStore;
-    private readonly Mock<RequestDelegate> _mockNext;
+    private readonly IIdempotencyStore _mockStore;
+    private readonly RequestDelegate _mockNext;
     private readonly IdempotencyOptions _options;
     private readonly IdempotencyMiddleware _middleware;
+    private readonly IOptions<IdempotencyOptions> _optionsWrapper;
 
     public IdempotencyMiddlewareTests()
     {
-        _mockStore = new Mock<IIdempotencyStore>();
-        _mockNext = new Mock<RequestDelegate>();
+        _mockStore = Substitute.For<IIdempotencyStore>();
+        _mockNext = Substitute.For<RequestDelegate>();
         _options = new IdempotencyOptions { HeaderName = "Idempotency-Key" };
         
-        var optionsMock = new Mock<IOptions<IdempotencyOptions>>();
-        optionsMock.Setup(o => o.Value).Returns(_options);
+        _optionsWrapper = Substitute.For<IOptions<IdempotencyOptions>>();
+        _optionsWrapper.Value.Returns(_options);
 
-        _middleware = new IdempotencyMiddleware(_mockNext.Object, optionsMock.Object);
+        _middleware = new IdempotencyMiddleware(_mockNext, _optionsWrapper);
     }
 
     [Fact]
@@ -38,26 +39,25 @@ public class IdempotencyMiddlewareTests
         var context = CreateContextWithIdempotency("test-key-error");
         
         // Mock store: No existing key, lock acquired successfully
-        _mockStore.Setup(s => s.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IdempotencyRecord?)null);
+        _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IdempotencyRecord?>(null));
         
-        _mockStore.Setup(s => s.TryAcquireLockAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
 
         // Mock Next: Controller throws or returns 500
-        _mockNext.Setup(next => next(It.IsAny<HttpContext>()))
-            .Callback<HttpContext>(ctx => ctx.Response.StatusCode = 500)
-            .Returns(Task.CompletedTask);
+        _mockNext.Invoke(Arg.Any<HttpContext>()).Returns(Task.CompletedTask)
+            .AndDoes(ctx => ctx.Arg<HttpContext>().Response.StatusCode = 500);
 
         // Act
-        await _middleware.InvokeAsync(context, _mockStore.Object);
+        await _middleware.InvokeAsync(context, _mockStore);
 
         // Assert
         // We expect SaveAsync to NEVER be called because status is 500
-        _mockStore.Verify(s => s.SaveAsync(It.IsAny<string>(), It.IsAny<IdempotencyRecord>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _mockStore.DidNotReceiveWithAnyArgs().SaveAsync(default!, default!, default, default);
         
         // Lock should still be released
-        _mockStore.Verify(s => s.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        await _mockStore.Received(1).ReleaseLockAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -80,19 +80,18 @@ public class IdempotencyMiddlewareTests
 
         // First GetAsync returns null (Miss)
         // Second GetAsync (inside lock) returns record (Hit)
-        _mockStore.SetupSequence(s => s.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IdempotencyRecord?)null) // First check
-            .ReturnsAsync(cachedRecord);            // Double check
+        _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IdempotencyRecord?>(null), Task.FromResult<IdempotencyRecord?>(cachedRecord));
 
-        _mockStore.Setup(s => s.TryAcquireLockAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
 
         // Act
-        await _middleware.InvokeAsync(context, _mockStore.Object);
+        await _middleware.InvokeAsync(context, _mockStore);
 
         // Assert
         // Controller (_next) should NOT be called because we found it in the double-check
-        _mockNext.Verify(n => n(It.IsAny<HttpContext>()), Times.Never);
+        await _mockNext.DidNotReceive().Invoke(Arg.Any<HttpContext>());
         
         // Response should be what was in cache
         context.Response.Body.Seek(0, SeekOrigin.Begin);
@@ -100,7 +99,7 @@ public class IdempotencyMiddlewareTests
         Assert.Equal("Cached Response", body);
         
         // Lock should still be released
-        _mockStore.Verify(s => s.ReleaseLockAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        await _mockStore.Received(1).ReleaseLockAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -113,14 +112,14 @@ public class IdempotencyMiddlewareTests
         var context = CreateContextWithIdempotency("invalid-key");
 
         // Act
-        await _middleware.InvokeAsync(context, _mockStore.Object);
+        await _middleware.InvokeAsync(context, _mockStore);
 
         // Assert
         Assert.Equal(400, context.Response.StatusCode);
         
         // Store should NOT be accessed
-        _mockStore.Verify(s => s.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _mockNext.Verify(n => n(It.IsAny<HttpContext>()), Times.Never);
+        await _mockStore.DidNotReceiveWithAnyArgs().GetAsync(default!, default);
+        await _mockNext.DidNotReceive().Invoke(Arg.Any<HttpContext>());
     }
 
     private HttpContext CreateContextWithIdempotency(string key)
@@ -134,10 +133,10 @@ public class IdempotencyMiddlewareTests
         var metadata = new EndpointMetadataCollection(attribute);
         var endpoint = new Endpoint(null, metadata, "Test Endpoint");
         
-        var mockEndpointFeature = new Mock<IEndpointFeature>();
-        mockEndpointFeature.Setup(f => f.Endpoint).Returns(endpoint);
+        var endpointFeature = Substitute.For<IEndpointFeature>();
+        endpointFeature.Endpoint.Returns(endpoint);
         
-        context.Features.Set<IEndpointFeature>(mockEndpointFeature.Object);
+        context.Features.Set<IEndpointFeature>(endpointFeature);
 
         return context;
     }
