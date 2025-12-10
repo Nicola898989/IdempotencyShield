@@ -35,12 +35,12 @@ jobs:
         image: mcr.microsoft.com/mssql/server:2019-latest
         env:
           ACCEPT_EULA: Y
-          MSSQL_SA_PASSWORD: "Password123!"
+          MSSQL_SA_PASSWORD: "Password123"
         ports:
           - 1433:1433
         options: >-
           --user root
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Password123!' -Q 'SELECT 1'" 
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P Password123 -Q 'SELECT 1'" 
           --health-interval 10s 
           --health-timeout 5s 
           --health-retries 10
@@ -64,4 +64,4 @@ jobs:
         env:
           # Configuration for Compliance Tests
           TEST_POSTGRES_CONNECTION_STRING: "Host=localhost;Database=idempotency_tests;Username=postgres;Password=postgres"
-          TEST_SQLSERVER_CONNECTION_STRING: "Server=localhost,1433;Database=IdempotencyTests;User Id=sa;Password=Password123!;TrustServerCertificate=True"
+          TEST_SQLSERVER_CONNECTION_STRING: "Server=localhost,1433;Database=IdempotencyTests;User Id=sa;Password=Password123;TrustServerCertificate=True"
