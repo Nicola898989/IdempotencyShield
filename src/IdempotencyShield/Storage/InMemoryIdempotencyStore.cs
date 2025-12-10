@@ -43,17 +43,13 @@ public class InMemoryIdempotencyStore : IIdempotencyStore
     }
 
     /// <summary>
-    /// Attempts to acquire a lock using a semaphore with initial count of 1.
-    /// Returns false immediately if the semaphore is already held (non-blocking).
+    /// Attempts to acquire a lock using a semaphore with a specified timeout.
     /// </summary>
-    public Task<bool> TryAcquireLockAsync(string key, CancellationToken cancellationToken = default)
+    public Task<bool> TryAcquireLockAsync(string key, int lockTimeoutMilliseconds, CancellationToken cancellationToken = default)
     {
-        // Get or create a semaphore for this key
         var semaphore = _locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
 
-        // Try to enter the semaphore without waiting (timeout = 0)
-        // Returns true if acquired, false if already held by another request
-        var acquired = semaphore.Wait(0, cancellationToken);
+        var acquired = semaphore.Wait(lockTimeoutMilliseconds, cancellationToken);
         return Task.FromResult(acquired);
     }
 
