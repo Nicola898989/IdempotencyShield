@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net8.0;net6.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>IdempotencyShield</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>NicolaSantoro</Authors>
+    <Description>ASP.NET Core middleware for ensuring HTTP request idempotency through distributed locking, response caching, and payload validation. Prevents duplicate request processing and retry storms.</Description>
+    <PackageTags>aspnetcore;middleware;idempotency;distributed-locking;caching;resilience</PackageTags>
+    <RepositoryUrl>https://github.com/fortemartello/IdempotencyShield</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+
+
+  <!-- Conditional package references for different target frameworks -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net6.0'">
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

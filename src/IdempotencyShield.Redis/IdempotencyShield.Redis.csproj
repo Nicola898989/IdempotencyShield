@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net8.0;net6.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>IdempotencyShield.Redis</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>NicolaSantoro</Authors>
+    <Description>Redis-backed implementation of IIdempotencyStore for IdempotencyShield. Provides distributed caching and locking for multi-instance ASP.NET Core deployments.</Description>
+    <PackageTags>aspnetcore;middleware;idempotency;redis;distributed-locking;caching</PackageTags>
+    <RepositoryUrl>https://github.com/fortemartello/IdempotencyShield</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IdempotencyShield\IdempotencyShield.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Examples/**/*.cs" />
+    <None Include="Examples/**/*" />
+  </ItemGroup>
+
+</Project>
