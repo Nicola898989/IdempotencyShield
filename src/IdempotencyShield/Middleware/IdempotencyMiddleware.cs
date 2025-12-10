@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using IdempotencyShield.Attributes;
 using IdempotencyShield.Configuration;
+using IdempotencyShield.Exceptions;
 using IdempotencyShield.Models;
 using IdempotencyShield.Storage;
 using Microsoft.AspNetCore.Http;
@@ -88,8 +89,15 @@ public class IdempotencyMiddleware
             return;
         }
 
-        if (!await store.TryAcquireLockAsync(key, context.RequestAborted))
+        if (!await store.TryAcquireLockAsync(key, _options.LockTimeoutMilliseconds, context.RequestAborted))
         {
+            if (_options.LockTimeoutMilliseconds > 0)
+            {
+                throw new LockTimeoutException(
+                    $"Could not acquire a lock for idempotency key '{key}' within the configured timeout of {_options.LockTimeoutMilliseconds}ms.",
+                    key, _options.LockTimeoutMilliseconds);
+            }
+
             context.Response.StatusCode = StatusCodes.Status409Conflict;
             await context.Response.WriteAsync("A request with this idempotency key is currently being processed.");
             return;
@@ -189,7 +197,10 @@ public class IdempotencyMiddleware
 
         if (request.ContentLength > _options.MaxRequestBodySize)
         {
-            throw new InvalidOperationException($"Request body size ({request.ContentLength} bytes) exceeds the configured limit ({_options.MaxRequestBodySize} bytes) for idempotency payload validation.");
+            throw new RequestBodyTooLargeException(
+                $"Request body size ({request.ContentLength} bytes) exceeds the configured limit ({_options.MaxRequestBodySize} bytes) for idempotency payload validation.",
+                request.ContentLength ?? 0,
+                _options.MaxRequestBodySize);
         }
 
         if (request.Body.CanSeek)

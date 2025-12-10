@@ -1,6 +1,7 @@
 using System.Text;
 using IdempotencyShield.Attributes;
 using IdempotencyShield.Configuration;
+using IdempotencyShield.Exceptions;
 using IdempotencyShield.Middleware;
 using IdempotencyShield.Models;
 using IdempotencyShield.Storage;
@@ -33,7 +34,7 @@ public class IdempotencyMiddlewareConfigurationTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenRequestBodyExceedsLimit_ShouldThrowException()
+    public async Task InvokeAsync_WhenRequestBodyExceedsLimit_ShouldThrowRequestBodyTooLargeException()
     {
         // Arrange
         _options.MaxRequestBodySize = 10; // 10 bytes limit
@@ -43,10 +44,11 @@ public class IdempotencyMiddlewareConfigurationTests
             .Returns(Task.FromResult<IdempotencyRecord?>(null));
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<RequestBodyTooLargeException>(() =>
             _middleware.InvokeAsync(context, _mockStore));
 
-        Assert.Contains("exceeds the configured limit", exception.Message);
+        Assert.Equal(11, exception.RequestBodySize);
+        Assert.Equal(10, exception.MaxRequestBodySize);
     }
 
     [Fact]
@@ -58,7 +60,7 @@ public class IdempotencyMiddlewareConfigurationTests
 
         _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IdempotencyRecord?>(null));
-        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
         _mockNext.Invoke(Arg.Any<HttpContext>()).Returns(Task.CompletedTask)

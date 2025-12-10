@@ -42,7 +42,7 @@ public class IdempotencyMiddlewareTests
         _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IdempotencyRecord?>(null));
         
-        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
         // Mock Next: Controller throws or returns 500
@@ -83,7 +83,7 @@ public class IdempotencyMiddlewareTests
         _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IdempotencyRecord?>(null), Task.FromResult<IdempotencyRecord?>(cachedRecord));
 
-        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
         // Act

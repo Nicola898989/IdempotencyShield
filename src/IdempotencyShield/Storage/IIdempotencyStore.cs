@@ -28,9 +28,10 @@ public interface IIdempotencyStore
     /// Attempts to acquire a distributed lock for the given key.
     /// </summary>
     /// <param name="key">The idempotency key.</param>
+    /// <param name="lockTimeoutMilliseconds">The maximum time to wait for the lock.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if the lock was acquired, false if another process holds it.</returns>
-    Task<bool> TryAcquireLockAsync(string key, CancellationToken cancellationToken = default);
+    Task<bool> TryAcquireLockAsync(string key, int lockTimeoutMilliseconds, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Releases the distributed lock for the given key.
