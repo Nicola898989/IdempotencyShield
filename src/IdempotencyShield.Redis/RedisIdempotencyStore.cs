@@ -80,7 +80,7 @@ public class RedisIdempotencyStore : IIdempotencyStore
     /// Attempts to acquire a distributed lock using Redis SET NX (SET if Not eXists).
     /// Returns true if the lock was acquired, false if another process holds it.
     /// </summary>
-    public async Task<bool> TryAcquireLockAsync(string key, CancellationToken cancellationToken = default)
+    public async Task<bool> TryAcquireLockAsync(string key, int lockTimeoutMilliseconds, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
         var lockKey = LockKeyPrefix + key;
@@ -89,11 +89,11 @@ public class RedisIdempotencyStore : IIdempotencyStore
         var lockValue = Guid.NewGuid().ToString();
         
         // Use SET with NX (Not eXists) flag and expiry for distributed locking
-        // The lock expires automatically after LockExpirySeconds to prevent deadlocks
+        // The lock expires automatically after lockTimeoutMilliseconds to prevent deadlocks
         var acquired = await db.StringSetAsync(
             lockKey,
             lockValue,
-            TimeSpan.FromSeconds(LockExpirySeconds),
+            TimeSpan.FromMilliseconds(lockTimeoutMilliseconds),
             When.NotExists
         );
 

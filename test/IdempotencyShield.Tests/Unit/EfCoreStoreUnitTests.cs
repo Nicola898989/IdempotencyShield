@@ -49,7 +49,7 @@ public class EfCoreStoreUnitTests
         var data = new List<IdempotencyLockEntity> { expiredLock };
         
         // Use MockQueryable to setup the DbSet behavior for Async queries
-        var mockSet = data.AsQueryable().BuildMockDbSet();
+        var mockSet = data.BuildMockDbSet();
         
         _mockContext.Setup(c => c.IdempotencyLocks).Returns(mockSet.Object);
         _mockContext.Setup(c => c.Set<IdempotencyLockEntity>()).Returns(mockSet.Object);
@@ -60,7 +60,7 @@ public class EfCoreStoreUnitTests
                 new List<Microsoft.EntityFrameworkCore.Update.IUpdateEntry>()));
 
         // Act
-        var result = await _store.TryAcquireLockAsync(key);
+        var result = await _store.TryAcquireLockAsync(key, 30000); // 30s timeout
 
         // Assert
         Assert.False(result);

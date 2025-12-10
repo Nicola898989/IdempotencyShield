@@ -26,7 +26,7 @@ public class EfCoreComplianceTests : IdempotencyStoreComplianceTests
         {
             DataSource = _dbFilePath,
             Mode = SqliteOpenMode.ReadWriteCreate
-        }.ToString();
+        }.ToString() + ";Default Timeout=5;Pooling=False"; // Wait up to 5s, no pooling to release locks
 
         _connection = new SqliteConnection(connectionString);
         _connection.Open();
@@ -39,7 +39,7 @@ public class EfCoreComplianceTests : IdempotencyStoreComplianceTests
         }
 
         builder.Services.AddDbContext<TestIdempotencyContext>(options =>
-            options.UseSqlite(_connection));
+            options.UseSqlite(connectionString));
 
         builder.Services.AddIdempotencyShieldWithEfCore<TestIdempotencyContext>();
         

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using IdempotencyShield.Extensions;
+using IdempotencyShield.Exceptions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -125,8 +126,7 @@ public class EdgeCaseTests
         request.Headers.Add("Idempotency-Key", key);
 
         // Act & Assert
-        // The middleware throws InvalidOperationException, which results in 500 Internal Server Error in the test server
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => 
+        var exception = await Assert.ThrowsAsync<RequestBodyTooLargeException>(async () => 
         {
             // Note: TestServer might wrap exceptions or return 500. 
             // If it returns 500, we check status code. If it bubbles up, we check exception.
@@ -146,7 +146,7 @@ public class EdgeCaseTests
             }
         });
         
-        Assert.Contains("too large", exception.Message);
+        Assert.Contains("exceeds the configured limit", exception.Message);
     }
 
     [Fact]

@@ -110,9 +110,9 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<bool> TryAcquireLockAsync(string key, CancellationToken cancellationToken = default)
+    public async Task<bool> TryAcquireLockAsync(string key, int lockTimeoutMilliseconds, CancellationToken cancellationToken = default)
     {
-        var expiresAt = DateTime.UtcNow.AddSeconds(30); // 30s lock timeout
+        var expiresAt = DateTime.UtcNow.AddMilliseconds(lockTimeoutMilliseconds);
 
         // Cleanup expired lock first? Or handle violation?
         // Let's try to find existing lock first.
@@ -158,6 +158,22 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
+
+            // Safety Check: Did someone finish the job while we were waiting for the DB lock?
+            // This can happen if the DB queues conflicting INSERTs (like SQLite).
+            // T1 finishes (inserts record, releases lock). T2 (waiting) acquires lock.
+            // T2 must verify that the work hasn't been done yet.
+            var recordExists = await _context.IdempotencyRecords.AnyAsync(r => r.Key == key, cancellationToken);
+            if (recordExists)
+            {
+                // Work is done. Release the lock we just acquired and return false (Conflict).
+                // The client will retry and find the record, OR if the middleware supported it, we could return the record.
+                // Given the interface returns bool, false is the safest path.
+                _context.IdempotencyLocks.Remove(newLock);
+                await _context.SaveChangesAsync(cancellationToken);
+                return false;
+            }
+
             return true;
         }
         catch (DbUpdateException)
