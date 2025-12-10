@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Data;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,4 +41,5 @@ public interface IIdempotencyDbContext
 {
     DbSet<IdempotencyRecordEntity> IdempotencyRecords { get; }
     DbSet<IdempotencyLockEntity> IdempotencyLocks { get; }
+    Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel, CancellationToken cancellationToken = default);
 }

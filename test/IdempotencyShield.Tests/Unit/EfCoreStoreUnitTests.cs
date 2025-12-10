@@ -59,6 +59,11 @@ public class EfCoreStoreUnitTests
             .ThrowsAsync(new DbUpdateConcurrencyException("Race condition simulation", 
                 new List<Microsoft.EntityFrameworkCore.Update.IUpdateEntry>()));
 
+        // Mock Transaction
+        var mockTransaction = new Mock<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction>();
+        _mockContext.Setup(c => c.BeginTransactionAsync(It.IsAny<System.Data.IsolationLevel>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mockTransaction.Object);
+
         // Act
         var result = await _store.TryAcquireLockAsync(key, 30000); // 30s timeout
 

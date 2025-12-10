@@ -112,73 +112,83 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
 
     public async Task<bool> TryAcquireLockAsync(string key, int lockTimeoutMilliseconds, CancellationToken cancellationToken = default)
     {
-        var expiresAt = DateTime.UtcNow.AddMilliseconds(lockTimeoutMilliseconds);
-
-        // Cleanup expired lock first? Or handle violation?
-        // Let's try to find existing lock first.
-        var existingLock = await _context.IdempotencyLocks
-            .FirstOrDefaultAsync(l => l.Key == key, cancellationToken);
-
-        if (existingLock != null)
-        {
-            if (existingLock.ExpiresAt < DateTime.UtcNow)
-            {
-                // Expired - take over
-                existingLock.ExpiresAt = expiresAt;
-                existingLock.OwnerId = _ownerId;
-                
-                try
-                {
-                    await _context.SaveChangesAsync(cancellationToken);
-                    return true;
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    // Someone else took it over faster
-                    return false;
-                }
-            }
-            else
-            {
-                // Active lock
-                return false;
-            }
-        }
-
-        // No lock found - try to create
-        var newLock = new IdempotencyLockEntity
-        {
-            Key = key,
-            ExpiresAt = expiresAt,
-            OwnerId = _ownerId
-        };
-        
-        _context.IdempotencyLocks.Add(newLock);
+        // Use a transaction to ensure strict serialization and visibility
+        // Call validation: TContext implements IIdempotencyDbContext which now has BeginTransactionAsync
+        using var transaction = await _context.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
         try
         {
-            await _context.SaveChangesAsync(cancellationToken);
+            var expiresAt = DateTime.UtcNow.AddMilliseconds(lockTimeoutMilliseconds);
 
-            // Safety Check: Did someone finish the job while we were waiting for the DB lock?
-            // This can happen if the DB queues conflicting INSERTs (like SQLite).
-            // T1 finishes (inserts record, releases lock). T2 (waiting) acquires lock.
-            // T2 must verify that the work hasn't been done yet.
-            var recordExists = await _context.IdempotencyRecords.AnyAsync(r => r.Key == key, cancellationToken);
-            if (recordExists)
+            // Cleanup expired lock first? Or handle violation?
+            // Let's try to find existing lock first.
+            var existingLock = await _context.IdempotencyLocks
+                .FirstOrDefaultAsync(l => l.Key == key, cancellationToken);
+
+            if (existingLock != null)
             {
-                // Work is done. Release the lock we just acquired and return false (Conflict).
-                // The client will retry and find the record, OR if the middleware supported it, we could return the record.
-                // Given the interface returns bool, false is the safest path.
-                _context.IdempotencyLocks.Remove(newLock);
-                await _context.SaveChangesAsync(cancellationToken);
-                return false;
+                if (existingLock.ExpiresAt < DateTime.UtcNow)
+                {
+                    // Expired - take over
+                    existingLock.ExpiresAt = expiresAt;
+                    existingLock.OwnerId = _ownerId;
+                    
+                    try
+                    {
+                        await _context.SaveChangesAsync(cancellationToken);
+                        await transaction.CommitAsync(cancellationToken);
+                        return true;
+                    }
+                    catch (DbUpdateConcurrencyException)
+                    {
+                        // Someone else took it over faster
+                        return false;
+                    }
+                }
+                else
+                {
+                    // Active lock
+                    return false;
+                }
             }
 
-            return true;
+            // No lock found - try to create
+            var newLock = new IdempotencyLockEntity
+            {
+                Key = key,
+                ExpiresAt = expiresAt,
+                OwnerId = _ownerId
+            };
+            
+            _context.IdempotencyLocks.Add(newLock);
+
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+
+                // Safety Check: Did someone finish the job while we were waiting for the DB lock?
+                // Now inside a Serializable transaction, we should see committed data from the previous owner.
+                var recordExists = await _context.IdempotencyRecords.AnyAsync(r => r.Key == key, cancellationToken);
+                if (recordExists)
+                {
+                    // Work is done. Release the lock we just acquired.
+                    _context.IdempotencyLocks.Remove(newLock);
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                    return false;
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                return true;
+            }
+            catch (DbUpdateException)
+            {
+                // PK violation aka locked by someone else in the meantime
+                return false;
+            }
         }
-        catch (DbUpdateException)
+        catch
         {
-            // PK violation aka locked by someone else in the meantime
             return false;
         }
     }
