@@ -231,6 +231,11 @@ redis-cli --scan --pattern "idempotency:lock:*" | xargs redis-cli DEL
 
 Lock keys should auto-expire after 30 seconds. Persistent lock keys indicate crashed processes.
 
+## Related Packages
+
+- [**IdempotencyShield**](https://www.nuget.org/packages/IdempotencyShield): Core library.
+- [**IdempotencyShield.EntityFrameworkCore**](https://www.nuget.org/packages/IdempotencyShield.EntityFrameworkCore): Alternative storage using Entity Framework Core.
+
 ## License
 
 MIT License - See LICENSE file for details.

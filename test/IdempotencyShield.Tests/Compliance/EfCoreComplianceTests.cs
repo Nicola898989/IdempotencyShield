@@ -14,27 +14,27 @@ public class EfCoreComplianceTests : IdempotencyStoreComplianceTests
 {
     private IHost? _host;
     private SqliteConnection? _connection;
+    private string? _dbFilePath;
 
     protected override HttpClient CreateClient()
     {
         var builder = WebApplication.CreateBuilder();
 
-        // Setup EF Core Sqlite (In-Memory shared connection)
-        // Setup EF Core Sqlite (In-Memory shared connection)
+        // Setup EF Core Sqlite (File-based for better concurrency)
+        _dbFilePath = Path.GetTempFileName();
         var connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = ":memory:",
-            Mode = SqliteOpenMode.Memory,
-            Cache = SqliteCacheMode.Shared
+            DataSource = _dbFilePath,
+            Mode = SqliteOpenMode.ReadWriteCreate
         }.ToString();
 
         _connection = new SqliteConnection(connectionString);
         _connection.Open();
         
-        // Set busy timeout to 5 seconds to handle concurrent tests
+        // Jounal mode WAL is better for concurrency
         using (var command = _connection.CreateCommand())
         {
-            command.CommandText = "PRAGMA busy_timeout = 5000;";
+            command.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 30000; PRAGMA synchronous = NORMAL;";
             command.ExecuteNonQuery();
         }
 
@@ -72,6 +72,16 @@ public class EfCoreComplianceTests : IdempotencyStoreComplianceTests
         _host?.Dispose();
         _connection?.Close();
         _connection?.Dispose();
+        
+        if (!string.IsNullOrEmpty(_dbFilePath) && File.Exists(_dbFilePath))
+        {
+            try 
+            {
+                File.Delete(_dbFilePath);
+            }
+            catch { /* Ignore cleanup errors */ }
+        }
+        
         return Task.CompletedTask;
     }
 }

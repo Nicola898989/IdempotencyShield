@@ -1,5 +1,3 @@
-# IdempotencyShield
-
 [![NuGet](https://img.shields.io/nuget/v/IdempotencyShield.svg)](https://www.nuget.org/packages/IdempotencyShield)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -270,6 +268,10 @@ This project is licensed under the MIT License.
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
+
+## Related Packages
+- [**IdempotencyShield.Redis**](https://www.nuget.org/packages/IdempotencyShield.Redis): Distributed storage using Redis.
+- [**IdempotencyShield.EntityFrameworkCore**](https://www.nuget.org/packages/IdempotencyShield.EntityFrameworkCore): Persistent storage using EF Core (SQL Server, Postgres, etc.).
 
 ## Support
 
