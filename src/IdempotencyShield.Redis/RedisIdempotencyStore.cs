@@ -69,7 +69,9 @@ public class RedisIdempotencyStore : IIdempotencyStore
         var cacheKey = CacheKeyPrefix + key;
         
         var json = JsonSerializer.Serialize(record, _jsonOptions);
-        var expiry = TimeSpan.FromMinutes(expiryMinutes);
+        
+        // Ensure expiry is positive
+        TimeSpan? expiry = expiryMinutes > 0 ? TimeSpan.FromMinutes(expiryMinutes) : null;
 
         await db.StringSetAsync(cacheKey, json, expiry);
     }
@@ -88,12 +90,15 @@ public class RedisIdempotencyStore : IIdempotencyStore
         // Generate a unique value for this specific lock acquisition attempt
         var lockValue = Guid.NewGuid().ToString();
         
+        // Ensure strictly positive expiry for Redis SET command
+        var safeTimeout = Math.Max(1, lockTimeoutMilliseconds);
+
         // Use SET with NX (Not eXists) flag and expiry for distributed locking
         // The lock expires automatically after lockTimeoutMilliseconds to prevent deadlocks
         var acquired = await db.StringSetAsync(
             lockKey,
             lockValue,
-            TimeSpan.FromMilliseconds(lockTimeoutMilliseconds),
+            TimeSpan.FromMilliseconds(safeTimeout),
             When.NotExists
         );
 

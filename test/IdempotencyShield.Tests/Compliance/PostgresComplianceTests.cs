@@ -96,8 +96,19 @@ public class PostgresComplianceTests : IdempotencyStoreComplianceTests
             using var ctx = new TestIdempotencyContext(optionsBuilder.Options);
             if (await ctx.Database.CanConnectAsync())
             {
-                 await ctx.Database.ExecuteSqlRawAsync("DELETE FROM \"IdempotencyRecords\"");
-                 await ctx.Database.ExecuteSqlRawAsync("DELETE FROM \"IdempotencyLocks\"");
+                try
+                {
+                     await ctx.Database.ExecuteSqlRawAsync("DELETE FROM \"IdempotencyRecords\"");
+                     await ctx.Database.ExecuteSqlRawAsync("DELETE FROM \"IdempotencyLocks\"");
+                }
+                catch (PostgresException ex) when (ex.SqlState == "42P01")
+                {
+                    // Ignore "relation does not exist" errors during cleanup
+                }
+                catch
+                {
+                    // Best effort cleanup
+                }
             }
         }
     }
