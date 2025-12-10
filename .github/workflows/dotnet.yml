@@ -32,10 +32,10 @@ jobs:
           --health-retries 5
 
       sqlserver:
-        image: mcr.microsoft.com/mssql/server:2022-latest
+        image: mcr.microsoft.com/mssql/server:2019-latest
         env:
           ACCEPT_EULA: Y
-          MSSQL_SA_PASSWORD: Password123!
+          MSSQL_SA_PASSWORD: "Password123!"
         ports:
           - 1433:1433
         options: >-
