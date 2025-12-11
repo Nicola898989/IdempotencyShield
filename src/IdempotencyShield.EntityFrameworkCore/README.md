@@ -94,6 +94,17 @@ Then register it normally:
 builder.Services.AddIdempotencyShieldWithEfCore<AppDbContext>();
 ```
 
+### With Custom Options
+
+```csharp
+builder.Services.AddIdempotencyShieldWithEfCore<MyIdempotencyContext>(options =>
+{
+    options.FailureMode = IdempotencyFailureMode.FailSafe;
+    options.LockExpirationMilliseconds = 30000;
+    options.StorageRetryCount = 3;  // Retry on deadlock/transient failures
+});
+```
+
 ### Supported Databases
 
 Since this depends only on `Microsoft.EntityFrameworkCore`, it works with:
@@ -121,12 +132,35 @@ Stores the cached response.
 ### 2. IdempotencyLockEntity
 Manages distributed locks.
 - `Key` (PK, String): The key being processed.
-- `AcquiredAt` (DateTime): When the lock was taken.
+- `OwnerId` (String): Unique ID of the process holding the lock.
 - `ExpiresAt` (DateTime): Safety expiration to prevent deadlocks.
 
-## Cleanup Strategy
+## Features
 
-The database will grow over time as new keys are used. You should implement a background job (e.g., using `IHostedService` or Hangfire) to delete expired records.
+✅ **Deadlock Resilience** - Automatic retry on SQL Server/PostgreSQL deadlocks and transient failures  
+✅ **Serializable Transactions** - Ensures strict isolation for lock operations  
+✅ **Configurable Retry** - Built-in retry mechanism for database conflicts  
+✅ **Lock Expiration** - Prevents stuck locks from crashed processes
+
+## Background Cleanup Service
+
+The database will grow over time as new keys are used. Enable the automatic cleanup service to remove expired records:
+
+```csharp
+using IdempotencyShield.EntityFrameworkCore.Extensions;
+
+// In Program.cs
+builder.Services.AddIdempotencyCleanupService<MyIdempotencyContext>(
+    cleanupInterval: TimeSpan.FromHours(1));  // Run cleanup every hour
+```
+
+This hosted service:
+- Automatically removes expired `IdempotencyRecords` and `IdempotencyLocks`
+- Runs in the background without affecting API performance
+- Prevents database bloat over time
+- Uses efficient bulk delete operations (`ExecuteDeleteAsync` on .NET 7+)
+
+### Manual Cleanup (Alternative)
 
 ```sql
 -- Example SQL Cleanup

@@ -38,6 +38,9 @@ builder.Services.AddIdempotencyShieldWithRedis(
     {
         options.HeaderName = "X-Idempotency-Key";
         options.DefaultExpiryMinutes = 120;
+        options.LockExpirationMilliseconds = 30000;  // Lock TTL
+        options.LockWaitTimeoutMilliseconds = 5000;   // Spin-wait timeout
+        options.FailureMode = IdempotencyFailureMode.FailSafe;
     });
 ```
 
@@ -85,17 +88,28 @@ The implementation uses the following key prefixes:
 
 - **Lock Keys**: `idempotency:lock:{idempotency-key}`
   - Used for distributed locking via `SET NX`
-  - Automatically expires after 30 seconds (prevents deadlocks)
+  - TTL configured via `LockExpirationMilliseconds` (default: 30s)
+  - Implements spin-wait with exponential backoff + jitter
   - Stores machine name for debugging
 
 ## Features
 
 ✅ **Distributed Locking** - Uses Redis `SET NX` for atomic lock acquisition  
+✅ **Spin-Wait with Jitter** - Retries lock acquisition with randomized delays to avoid thundering herd  
 ✅ **Automatic Expiration** - TTL on both cache and locks  
 ✅ **JSON Serialization** - Efficient storage using System.Text.Json  
 ✅ **Error Handling** - Gracefully handles corrupted data  
-✅ **Deadlock Prevention** - Locks auto-expire after 30 seconds  
+✅ **Deadlock Prevention** - Locks auto-expire based on configuration  
 ✅ **Multi-Instance Safe** - Designed for load-balanced deployments
+
+## Lock Mechanism
+
+The Redis store implements a sophisticated spin-wait locking mechanism:
+
+1. **Atomic Lock Acquisition**: Uses `SET NX EX` for atomic lock creation with TTL
+2. **Spin-Wait Strategy**: If lock is held, retries with exponential backoff (15-50ms with jitter)
+3. **Configurable Timeout**: Respects `LockWaitTimeoutMilliseconds` for maximum wait time
+4. **Automatic Expiration**: Lock TTL prevents stuck locks from crashed processes
 
 ## Configuration Options
 

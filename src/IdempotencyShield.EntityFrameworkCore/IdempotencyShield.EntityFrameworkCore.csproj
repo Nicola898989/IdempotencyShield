@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Description>Entity Framework Core implementation for IdempotencyShield.</Description>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <RepositoryUrl>https://github.com/Nicola898989/IdempotencyShield</RepositoryUrl>
     <PackageTags>idempotency;middleware;api;efcore;entity framework;sql;postgres</PackageTags>
     <PackageIcon>icon.png</PackageIcon>

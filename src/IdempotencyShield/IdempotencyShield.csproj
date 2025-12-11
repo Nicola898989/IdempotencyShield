@@ -8,7 +8,7 @@
     
     <!-- NuGet Package Metadata -->
     <PackageId>IdempotencyShield</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Authors>NicolaSantoro</Authors>
     <Description>ASP.NET Core middleware for ensuring HTTP request idempotency through distributed locking, response caching, and payload validation. Prevents duplicate request processing and retry storms.</Description>
     <PackageTags>aspnetcore;middleware;idempotency;distributed-locking;caching;resilience</PackageTags>

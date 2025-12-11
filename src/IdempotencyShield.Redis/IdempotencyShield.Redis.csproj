@@ -8,7 +8,7 @@
     
     <!-- NuGet Package Metadata -->
     <PackageId>IdempotencyShield.Redis</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Authors>NicolaSantoro</Authors>
     <Description>Redis-backed implementation of IIdempotencyStore for IdempotencyShield. Provides distributed caching and locking for multi-instance ASP.NET Core deployments.</Description>
     <PackageTags>aspnetcore;middleware;idempotency;redis;distributed-locking;caching</PackageTags>

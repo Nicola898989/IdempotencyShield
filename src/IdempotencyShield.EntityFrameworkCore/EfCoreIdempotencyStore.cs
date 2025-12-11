@@ -189,12 +189,14 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
             catch (DbUpdateException)
             {
                 // Concurrency violation (someone else inserted/updated)
+                _context.ChangeTracker?.Clear();
                 shouldRetry = true;
             }
             catch (InvalidOperationException ex) when (ex.InnerException is DbUpdateException)
             {
                 // EF Core execution strategy might wrap transient failures (like deadlocks) 
                 // in InvalidOperationException. We treat them as concurrency retry signals.
+                _context.ChangeTracker?.Clear();
                 shouldRetry = true;
             }
             catch (Exception)

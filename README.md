@@ -9,9 +9,11 @@
 ✅ **Distributed Locking** - Prevents concurrent processing of duplicate requests  
 ✅ **Response Caching** - Instantly returns cached responses for duplicate requests  
 ✅ **Payload Validation** - SHA256 hashing ensures idempotency keys aren't reused with different payloads  
+✅ **Failure Resilience** - Configurable Fail-Safe and Fail-Open modes with automatic retries  
+✅ **Background Cleanup** - Automatic removal of expired records and locks  
 ✅ **Thread-Safe** - Production-ready concurrent implementation  
 ✅ **Extensible** - Plugin your own storage backend (Redis, SQL, etc.)  
-✅ **.NET 6+ Compatible** - Supports .NET 6, 8 and 10
+✅ **.NET 6+ Compatible** - Supports .NET 6 and .NET 8 (LTS)
 
 ## Installation
 
@@ -42,7 +44,15 @@ builder.Services.AddIdempotencyShield(options =>
 {
     options.HeaderName = "X-Idempotency-Key";
     options.DefaultExpiryMinutes = 120;
-    options.LockTimeoutMilliseconds = 0;
+    
+    // Lock configuration
+    options.LockExpirationMilliseconds = 30000;  // Lock TTL (time-to-live)
+    options.LockWaitTimeoutMilliseconds = 5000;  // Max wait time to acquire lock
+    
+    // Resilience configuration
+    options.FailureMode = IdempotencyFailureMode.FailSafe;  // or FailOpen
+    options.StorageRetryCount = 3;
+    options.StorageRetryDelayMilliseconds = 100;
 });
 
 var app = builder.Build();
@@ -144,10 +154,40 @@ public class IdempotencyOptions
     // Default expiry time in minutes for cached responses
     public int DefaultExpiryMinutes { get; set; } = 60;
     
-    // Max time to wait for lock acquisition (0 = no wait)
-    public int LockTimeoutMilliseconds { get; set; } = 0;
+    // Lock expiration (TTL) in milliseconds
+    public int LockExpirationMilliseconds { get; set; } = 30000;
+    
+    // Max time to wait for lock acquisition (0 = no wait, immediate 409 on conflict)
+    public int LockWaitTimeoutMilliseconds { get; set; } = 0;
+    
+    // Failure handling mode
+    public IdempotencyFailureMode FailureMode { get; set; } = IdempotencyFailureMode.FailSafe;
+    
+    // Number of retries for storage operations
+    public int StorageRetryCount { get; set; } = 3;
+    
+    // Delay between retries in milliseconds
+    public int StorageRetryDelayMilliseconds { get; set; } = 100;
 }
 ```
+
+### Failure Modes
+
+**Fail-Safe (Recommended for Production)**
+```csharp
+options.FailureMode = IdempotencyFailureMode.FailSafe;
+```
+- Storage failures propagate as exceptions (500 Internal Server Error)
+- Guarantees idempotency integrity
+- Best for critical operations (payments, orders, etc.)
+
+**Fail-Open (High Availability)**
+```csharp
+options.FailureMode = IdempotencyFailureMode.FailOpen;
+```
+- Storage failures are swallowed, request proceeds normally
+- Prioritizes availability over idempotency guarantees
+- Useful for non-critical operations or degraded mode
 
 ### IdempotentAttribute
 
@@ -238,6 +278,43 @@ public class RedisIdempotencyStore : IIdempotencyStore
 builder.Services.AddIdempotencyShield<RedisIdempotencyStore>();
 ```
 
+## Advanced Features
+
+### Background Cleanup Service
+
+For EF Core implementations, enable automatic cleanup of expired records:
+
+```csharp
+using IdempotencyShield.EntityFrameworkCore.Extensions;
+
+builder.Services.AddIdempotencyCleanupService<MyDbContext>(
+    cleanupInterval: TimeSpan.FromHours(1));  // Run cleanup every hour
+```
+
+This hosted service automatically removes expired idempotency records and locks, preventing database bloat.
+
+### Storage Retry Mechanism
+
+Configurable automatic retries for transient storage failures:
+
+```csharp
+builder.Services.AddIdempotencyShield(options =>
+{
+    options.StorageRetryCount = 3;                  // Retry up to 3 times
+    options.StorageRetryDelayMilliseconds = 100;     // Wait 100ms between retries
+});
+```
+
+### Lock Configuration
+
+```csharp
+options.LockExpirationMilliseconds = 30000;   // Lock expires after 30s (prevents stuck locks)
+options.LockWaitTimeoutMilliseconds = 5000;    // Wait up to 5s for lock acquisition
+```
+
+- **LockExpirationMilliseconds**: How long the lock lives (TTL). Prevents locks from staying forever if a process crashes.
+- **LockWaitTimeoutMilliseconds**: How long to wait/retry if lock is held by another request. Set to 0 for immediate 409 Conflict.
+
 ## Best Practices
 
 1. **Use UUIDs for Keys** - Generate unique idempotency keys on the client (e.g., UUID v4)
@@ -245,7 +322,10 @@ builder.Services.AddIdempotencyShield<RedisIdempotencyStore>();
 3. **Key Expiry** - Set appropriate expiry times based on your business requirements
 4. **Payload Validation** - Keep `ValidatePayload = true` to prevent key reuse attacks
 5. **Production Storage** - Use distributed stores (Redis, SQL) for multi-instance deployments
-6. **Monitoring** - Log 409 and 422 responses to track retry storms and misuse
+6. **Failure Mode** - Use `FailSafe` for critical operations, `FailOpen` for high availability scenarios
+7. **Lock Tuning** - Set `LockExpirationMilliseconds` higher than your longest request duration
+8. **Monitoring** - Log 409 and 422 responses to track retry storms and misuse
+9. **Cleanup Service** - Enable for EF Core to prevent database bloat
 
 ## Thread Safety
 

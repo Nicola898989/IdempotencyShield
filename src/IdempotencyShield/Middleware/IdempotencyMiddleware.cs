@@ -75,7 +75,12 @@ public class IdempotencyMiddleware
             requestBodyHash = await ComputeRequestBodyHashAsync(context.Request);
         }
 
-        var cachedRecord = await store.GetAsync(key, context.RequestAborted);
+        // 1. Check for cached response with resilience
+        IdempotencyRecord? cachedRecord = await ExecuteWithResilienceAsync(
+            async () => await store.GetAsync(key, context.RequestAborted), 
+            fallbackValue: null,
+            context.RequestAborted);
+
         if (cachedRecord != null)
         {
             if (idempotentAttribute.ValidatePayload && requestBodyHash != cachedRecord.RequestBodyHash)
@@ -89,10 +94,18 @@ public class IdempotencyMiddleware
             return;
         }
 
-        if (!await store.TryAcquireLockAsync(key, _options.LockExpirationMilliseconds, _options.LockWaitTimeoutMilliseconds, context.RequestAborted))
+        // 2. Try Acquire Lock with resilience
+        // If Fail-Open and store fails, we treat it as "Acquired" (true) to allow processing.
+        var lockAcquired = await ExecuteWithResilienceAsync(
+            async () => await store.TryAcquireLockAsync(key, _options.LockExpirationMilliseconds, _options.LockWaitTimeoutMilliseconds, context.RequestAborted), 
+            fallbackValue: true, 
+            context.RequestAborted);
+
+        if (!lockAcquired)
         {
             if (_options.LockWaitTimeoutMilliseconds > 0)
             {
+                 // Logic for timeout (didn't acquire lock)
                 throw new LockTimeoutException(
                     $"Could not acquire a lock for idempotency key '{key}' within the configured timeout of {_options.LockWaitTimeoutMilliseconds}ms.",
                     key, _options.LockWaitTimeoutMilliseconds);
@@ -105,10 +118,20 @@ public class IdempotencyMiddleware
 
         try
         {
-            cachedRecord = await store.GetAsync(key, context.RequestAborted);
+            // Double check (standard patterns might re-check here, but for now we proceed)
+            // Note: If GetAsync failed before (FailOpen), checking again here might fail again.
+            // Efficient check: if we are in "FailOpen" mode and the previous GetAsync FAILED (not just returned null),
+            // then we should probably skip this second check or at least handle it.
+            // Our ExecuteWithResilienceAsync handles exceptions by returning fallback, so calling it again is safe.
+            
+            cachedRecord = await ExecuteWithResilienceAsync(
+                async () => await store.GetAsync(key, context.RequestAborted),
+                fallbackValue: null, 
+                context.RequestAborted);
+
             if (cachedRecord != null)
             {
-                if (idempotentAttribute.ValidatePayload && requestBodyHash != cachedRecord.RequestBodyHash)
+                 if (idempotentAttribute.ValidatePayload && requestBodyHash != cachedRecord.RequestBodyHash)
                 {
                     context.Response.StatusCode = StatusCodes.Status422UnprocessableEntity;
                     await context.Response.WriteAsync("Idempotency key has been used with a different request payload.");
@@ -123,7 +146,11 @@ public class IdempotencyMiddleware
         }
         finally
         {
-            await store.ReleaseLockAsync(key, context.RequestAborted);
+            // Release lock with resilience
+            await ExecuteWithResilienceAsync(
+                async () => { await store.ReleaseLockAsync(key, context.RequestAborted); return true; }, 
+                fallbackValue: true, // Return value ignored for ReleaseLock
+                context.RequestAborted);
         }
     }
 
@@ -155,7 +182,13 @@ public class IdempotencyMiddleware
                     ? idempotentAttribute.ExpiryInMinutes
                     : _options.DefaultExpiryMinutes;
 
-                await store.SaveAsync(key, record, expiryMinutes, context.RequestAborted);
+                // Save with resiliency
+                // In Fail-Open mode, if Save fails, we swallow the error (log it) and return the response.
+                // This means the response is sent to the client, but not cached for future deduplication.
+                await ExecuteWithResilienceAsync(
+                    async () => { await store.SaveAsync(key, record, expiryMinutes, context.RequestAborted); return true; },
+                    fallbackValue: true, 
+                    context.RequestAborted);
             }
 
             responseBodyStream.Seek(0, SeekOrigin.Begin);
@@ -167,7 +200,7 @@ public class IdempotencyMiddleware
         }
     }
 
-    private static async Task ReplayCachedResponseAsync(HttpContext context, IdempotencyRecord record)
+    private async Task ReplayCachedResponseAsync(HttpContext context, IdempotencyRecord record)
     {
         context.Response.StatusCode = record.StatusCode;
         foreach (var header in record.Headers)
@@ -217,5 +250,52 @@ public class IdempotencyMiddleware
         }
 
         return Convert.ToBase64String(hashBytes);
+    }
+
+    /// <summary>
+    /// Executes a storage operation with retry logic and failure mode handling.
+    /// </summary>
+    private async Task<T> ExecuteWithResilienceAsync<T>(
+        Func<Task<T>> operation, 
+        T fallbackValue, 
+        CancellationToken cancellationToken)
+    {
+        int attempt = 0;
+        while (true)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception ex) when (!IsCancellationError(ex)) 
+            {
+                attempt++;
+                
+                // If we haven't exhausted retries, wait and retry
+                if (attempt <= _options.StorageRetryCount)
+                {
+                    // Simple constant delay
+                    await Task.Delay(_options.StorageRetryDelayMilliseconds, cancellationToken);
+                    continue; 
+                }
+
+                // Retries exhausted. Check FailureMode.
+                if (_options.FailureMode == IdempotencyFailureMode.FailOpen)
+                {
+                    // Log warning (assuming logger was available, but we don't have ILogger injected yet in this minimalist version)
+                    // TODO: Inject ILogger<IdempotencyMiddleware> to log these failures.
+                    // For now, we swallow and return fallback.
+                    return fallbackValue;
+                }
+
+                // FailSafe: Propagate exception
+                throw;
+            }
+        }
+    }
+
+    private static bool IsCancellationError(Exception ex)
+    {
+        return ex is OperationCanceledException;
     }
 }

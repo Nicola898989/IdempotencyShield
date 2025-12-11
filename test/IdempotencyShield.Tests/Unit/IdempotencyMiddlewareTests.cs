@@ -122,6 +122,132 @@ public class IdempotencyMiddlewareTests
         await _mockNext.DidNotReceive().Invoke(Arg.Any<HttpContext>());
     }
 
+    [Fact]
+    public async Task InvokeAsync_FailSafe_WhenStoreThrows_ShouldThrow()
+    {
+        // Arrange
+        _options.FailureMode = IdempotencyFailureMode.FailSafe;
+        var context = CreateContextWithIdempotency("failsafe-test");
+
+        _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IdempotencyRecord?>(new Exception("Redis Down")));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<Exception>(() => _middleware.InvokeAsync(context, _mockStore));
+    }
+
+    [Fact]
+    public async Task InvokeAsync_FailOpen_WhenStoreThrows_ShouldProceed()
+    {
+        // Arrange
+        _options.FailureMode = IdempotencyFailureMode.FailOpen;
+        var context = CreateContextWithIdempotency("failopen-test");
+
+        // Fail on GetAsync
+        _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IdempotencyRecord?>(new Exception("Redis Down")));
+
+        // Fail on TryAcquireLockAsync
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromException<bool>(new Exception("Redis Down")));
+
+        // Mock Next to succeed
+        _mockNext.Invoke(Arg.Any<HttpContext>()).Returns(Task.CompletedTask);
+
+        // Act
+        await _middleware.InvokeAsync(context, _mockStore);
+
+        // Assert
+        // Should have called _next
+        await _mockNext.Received(1).Invoke(Arg.Any<HttpContext>());
+        
+        // Assert response status is 200 (default)
+        Assert.Equal(200, context.Response.StatusCode);
+    }
+    
+    [Fact]
+    public async Task InvokeAsync_RetryLogic_ShouldRetryOnFailure()
+    {
+        // Arrange
+        _options.StorageRetryCount = 2;
+        _options.StorageRetryDelayMilliseconds = 1; // Fast test
+        var context = CreateContextWithIdempotency("retry-test");
+
+        // Fail first 2 times, succeed on 3rd
+        _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<IdempotencyRecord?>(new Exception("Fail 1")),
+                Task.FromException<IdempotencyRecord?>(new Exception("Fail 2")),
+                Task.FromResult<IdempotencyRecord?>(null) // Success (Miss)
+            );
+
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+
+        // Act
+        await _middleware.InvokeAsync(context, _mockStore);
+
+        // Assert
+        // GetAsync should have been called 4 times:
+        // 1. Initial GetAsync (Fail 1)
+        // 2. Retry GetAsync (Fail 2)
+        // 3. Retry GetAsync (Success - Miss) -> proceed to lock
+        // 4. Double-check GetAsync inside lock (Success - Miss)
+        await _mockStore.Received(4).GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_FailOpen_WhenSaveThrows_ShouldSwallowAndReturnResponse()
+    {
+         // Arrange
+        _options.FailureMode = IdempotencyFailureMode.FailOpen;
+        var context = CreateContextWithIdempotency("failopen-save-test");
+        context.Response.StatusCode = 200; // Original response
+
+        // Success on Get and Lock
+        _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IdempotencyRecord?>(null)); // Miss
+        
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+
+        // Mock SaveAsync to throw
+        _mockStore.SaveAsync(Arg.Any<string>(), Arg.Any<IdempotencyRecord>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new Exception("Redis Down on Save")));
+
+        _mockNext.Invoke(Arg.Any<HttpContext>()).Returns(Task.CompletedTask);
+
+        // Act
+        // Should NOT throw
+        await _middleware.InvokeAsync(context, _mockStore);
+
+        // Assert
+        // Verified we reached SaveAsync
+        await _mockStore.Received(1).SaveAsync(Arg.Any<string>(), Arg.Any<IdempotencyRecord>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        // Response should still be valid
+        Assert.Equal(200, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_FailSafe_WhenRetryExhausted_ShouldThrow()
+    {
+         // Arrange
+        _options.FailureMode = IdempotencyFailureMode.FailSafe;
+        _options.StorageRetryCount = 2; // Retry 2 times
+        _options.StorageRetryDelayMilliseconds = 1;
+        var context = CreateContextWithIdempotency("failsafe-exhausted-test");
+
+        // Always fail
+        _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IdempotencyRecord?>(new Exception("Persistent Failure")));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<Exception>(() => _middleware.InvokeAsync(context, _mockStore));
+        
+        // Assert called 3 times (1 initial + 2 retries)
+        await _mockStore.Received(3).GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     private HttpContext CreateContextWithIdempotency(string key)
     {
         var context = new DefaultHttpContext();

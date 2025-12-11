@@ -56,4 +56,40 @@ public class IdempotencyOptions
         "Set-Cookie",
         "Authorization"
     };
+
+    /// <summary>
+    /// The failure mode to use when the idempotency store is unavailable (e.g., Redis down).
+    /// Default is FailSafe (throws 500).
+    /// </summary>
+    public IdempotencyFailureMode FailureMode { get; set; } = IdempotencyFailureMode.FailSafe;
+
+    /// <summary>
+    /// The number of retry attempts for transient storage failures.
+    /// Default is 0 (no retries).
+    /// </summary>
+    public int StorageRetryCount { get; set; } = 0;
+
+    /// <summary>
+    /// The delay in milliseconds between retry attempts.
+    /// Default is 200 milliseconds.
+    /// </summary>
+    public int StorageRetryDelayMilliseconds { get; set; } = 200;
+}
+
+/// <summary>
+/// Defines the behavior when the idempotency store is unavailable.
+/// </summary>
+public enum IdempotencyFailureMode
+{
+    /// <summary>
+    /// Prevents the request from being processed if the store is unavailable.
+    /// Ensures idempotency but reduces availability.
+    /// </summary>
+    FailSafe,
+
+    /// <summary>
+    /// Proceeds with request processing (skipping idempotency checks) if the store is unavailable.
+    /// Increases availability but may allow duplicate requests.
+    /// </summary>
+    FailOpen
 }
