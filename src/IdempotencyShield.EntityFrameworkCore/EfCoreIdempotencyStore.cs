@@ -129,7 +129,6 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
             _currentTransaction = await _context.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
             
             bool lockAcquired = false;
-            bool shouldRetry = false;
 
             try
             {
@@ -152,7 +151,6 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
                     else
                     {
                         // Active lock found
-                        shouldRetry = true;
                     }
                 }
                 else
@@ -190,14 +188,12 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
             {
                 // Concurrency violation (someone else inserted/updated)
                 _context.ChangeTracker?.Clear();
-                shouldRetry = true;
             }
             catch (InvalidOperationException ex) when (ex.InnerException is DbUpdateException)
             {
                 // EF Core execution strategy might wrap transient failures (like deadlocks) 
                 // in InvalidOperationException. We treat them as concurrency retry signals.
                 _context.ChangeTracker?.Clear();
-                shouldRetry = true;
             }
             catch (Exception)
             {

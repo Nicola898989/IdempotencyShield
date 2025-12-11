@@ -11,6 +11,9 @@ namespace IdempotencyShield.Redis.Formatting;
 /// </summary>
 public class StringValuesJsonConverter : JsonConverter<StringValues>
 {
+    /// <summary>
+    /// Reads and converts JSON to StringValues.
+    /// </summary>
     public override StringValues Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -45,6 +48,9 @@ public class StringValuesJsonConverter : JsonConverter<StringValues>
         throw new JsonException($"Unexpected token type {reader.TokenType} when parsing StringValues.");
     }
 
+    /// <summary>
+    /// Writes StringValues as JSON array.
+    /// </summary>
     public override void Write(Utf8JsonWriter writer, StringValues value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();

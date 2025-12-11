@@ -57,7 +57,7 @@ public abstract class IdempotencyStoreComplianceTests
         {
             var content = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<TestController.PaymentResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            Assert.Equal(firstResult.ExecutionNumber, result.ExecutionNumber);
+            Assert.Equal(firstResult!.ExecutionNumber, result!.ExecutionNumber);
             Assert.Equal(firstResult.TransactionId, result.TransactionId);
         }
     }
