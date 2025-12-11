@@ -45,11 +45,12 @@ public class InMemoryIdempotencyStore : IIdempotencyStore
     /// <summary>
     /// Attempts to acquire a lock using a semaphore with a specified timeout.
     /// </summary>
-    public Task<bool> TryAcquireLockAsync(string key, int lockTimeoutMilliseconds, CancellationToken cancellationToken = default)
+    public Task<bool> TryAcquireLockAsync(string key, int lockExpirationMilliseconds, int lockWaitTimeoutMilliseconds, CancellationToken cancellationToken = default)
     {
         var semaphore = _locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
 
-        var acquired = semaphore.Wait(lockTimeoutMilliseconds, cancellationToken);
+        // Use the wait timeout for the semaphore acquisition
+        var acquired = semaphore.Wait(lockWaitTimeoutMilliseconds, cancellationToken);
         return Task.FromResult(acquired);
     }
 

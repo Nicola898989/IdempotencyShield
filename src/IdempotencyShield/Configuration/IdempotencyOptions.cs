@@ -18,11 +18,16 @@ public class IdempotencyOptions
     public int DefaultExpiryMinutes { get; set; } = 60;
 
     /// <summary>
-    /// Maximum time in milliseconds to wait for lock acquisition before returning 409 Conflict.
-    /// Set to 0 for immediate failure if lock is held.
-    /// Default is 0 (no waiting).
+    /// The maximum time in milliseconds that the lock remains valid (TTL) to prevent deadlocks.
+    /// Default is 30000 ms (30 seconds).
     /// </summary>
-    public int LockTimeoutMilliseconds { get; set; } = 0;
+    public int LockExpirationMilliseconds { get; set; } = 30000;
+
+    /// <summary>
+    /// Maximum time in milliseconds to wait for lock acquisition before returning 409 Conflict.
+    /// Default is 0 (no waiting, fail-fast).
+    /// </summary>
+    public int LockWaitTimeoutMilliseconds { get; set; } = 0;
     /// <summary>
     /// Optional validator function for the Idempotency-Key.
     /// If provided, this function will be called with the key value.

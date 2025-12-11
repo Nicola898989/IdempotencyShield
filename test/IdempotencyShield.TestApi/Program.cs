@@ -12,7 +12,7 @@ builder.Services.AddIdempotencyShield(options =>
 {
     options.HeaderName = "Idempotency-Key";
     options.DefaultExpiryMinutes = 60;
-    options.LockTimeoutMilliseconds = 0;
+    options.LockWaitTimeoutMilliseconds = 0;
 });
 
 var app = builder.Build();

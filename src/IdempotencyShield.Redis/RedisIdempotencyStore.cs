@@ -81,8 +81,9 @@ public class RedisIdempotencyStore : IIdempotencyStore
     /// <summary>
     /// Attempts to acquire a distributed lock using Redis SET NX (SET if Not eXists).
     /// Returns true if the lock was acquired, false if another process holds it.
+    /// If lockWaitTimeoutMilliseconds > 0, it retries until the timeout is reached.
     /// </summary>
-    public async Task<bool> TryAcquireLockAsync(string key, int lockTimeoutMilliseconds, CancellationToken cancellationToken = default)
+    public async Task<bool> TryAcquireLockAsync(string key, int lockExpirationMilliseconds, int lockWaitTimeoutMilliseconds, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
         var lockKey = LockKeyPrefix + key;
@@ -91,24 +92,43 @@ public class RedisIdempotencyStore : IIdempotencyStore
         var lockValue = Guid.NewGuid().ToString();
         
         // Ensure strictly positive expiry for Redis SET command
-        var safeTimeout = Math.Max(1, lockTimeoutMilliseconds);
+        var safeExpiry = Math.Max(1, lockExpirationMilliseconds);
+        var expirySpan = TimeSpan.FromMilliseconds(safeExpiry);
 
-        // Use SET with NX (Not eXists) flag and expiry for distributed locking
-        // The lock expires automatically after lockTimeoutMilliseconds to prevent deadlocks
-        var acquired = await db.StringSetAsync(
-            lockKey,
-            lockValue,
-            TimeSpan.FromMilliseconds(safeTimeout),
-            When.NotExists
-        );
+        var startTime = DateTime.UtcNow;
+        var timeoutSpan = TimeSpan.FromMilliseconds(lockWaitTimeoutMilliseconds);
 
-        if (acquired)
+        while (true)
         {
-            // Store the lock value in the current async context so we can release it safely later
-            _currentLockValue.Value = lockValue;
-        }
+            cancellationToken.ThrowIfCancellationRequested();
 
-        return acquired;
+            // Use SET with NX (Not eXists) flag and expiry for distributed locking
+            // The lock expires automatically after lockExpirationMilliseconds to prevent deadlocks
+            var acquired = await db.StringSetAsync(
+                lockKey,
+                lockValue,
+                expirySpan,
+                When.NotExists
+            );
+
+            if (acquired)
+            {
+                // Store the lock value in the current async context so we can release it safely later
+                _currentLockValue.Value = lockValue;
+                return true;
+            }
+
+            // If we don't want to wait, or if we ran out of time
+            if (lockWaitTimeoutMilliseconds <= 0 || (DateTime.UtcNow - startTime) >= timeoutSpan)
+            {
+                return false;
+            }
+
+            // Wait before retrying (Spin-Wait)
+            // Use a small delay with jitter to prevent thundering herd
+            var delay = Random.Shared.Next(15, 50);
+            await Task.Delay(delay, cancellationToken);
+        }
     }
 
     /// <summary>

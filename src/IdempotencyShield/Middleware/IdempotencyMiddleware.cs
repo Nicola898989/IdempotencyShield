@@ -89,13 +89,13 @@ public class IdempotencyMiddleware
             return;
         }
 
-        if (!await store.TryAcquireLockAsync(key, _options.LockTimeoutMilliseconds, context.RequestAborted))
+        if (!await store.TryAcquireLockAsync(key, _options.LockExpirationMilliseconds, _options.LockWaitTimeoutMilliseconds, context.RequestAborted))
         {
-            if (_options.LockTimeoutMilliseconds > 0)
+            if (_options.LockWaitTimeoutMilliseconds > 0)
             {
                 throw new LockTimeoutException(
-                    $"Could not acquire a lock for idempotency key '{key}' within the configured timeout of {_options.LockTimeoutMilliseconds}ms.",
-                    key, _options.LockTimeoutMilliseconds);
+                    $"Could not acquire a lock for idempotency key '{key}' within the configured timeout of {_options.LockWaitTimeoutMilliseconds}ms.",
+                    key, _options.LockWaitTimeoutMilliseconds);
             }
 
             context.Response.StatusCode = StatusCodes.Status409Conflict;

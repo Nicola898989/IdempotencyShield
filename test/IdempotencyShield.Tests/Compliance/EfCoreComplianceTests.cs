@@ -34,7 +34,7 @@ public class EfCoreComplianceTests : IdempotencyStoreComplianceTests
         // Jounal mode WAL is better for concurrency
         using (var command = _connection.CreateCommand())
         {
-            command.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 30000; PRAGMA synchronous = NORMAL;";
+            command.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 30000; PRAGMA synchronous = FULL;";
             command.ExecuteNonQuery();
         }
 

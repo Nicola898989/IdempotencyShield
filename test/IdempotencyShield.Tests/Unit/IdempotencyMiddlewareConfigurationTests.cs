@@ -60,7 +60,7 @@ public class IdempotencyMiddlewareConfigurationTests
 
         _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IdempotencyRecord?>(null));
-        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _mockStore.TryAcquireLockAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
         _mockNext.Invoke(Arg.Any<HttpContext>()).Returns(Task.CompletedTask)

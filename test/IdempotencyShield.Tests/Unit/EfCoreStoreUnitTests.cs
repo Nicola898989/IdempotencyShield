@@ -65,7 +65,7 @@ public class EfCoreStoreUnitTests
             .ReturnsAsync(mockTransaction.Object);
 
         // Act
-        var result = await _store.TryAcquireLockAsync(key, 30000); // 30s timeout
+        var result = await _store.TryAcquireLockAsync(key, 30000, 0); // 30s TTL, 0s wait
 
         // Assert
         Assert.False(result);

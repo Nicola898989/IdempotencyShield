@@ -34,15 +34,15 @@ public class IdempotencyMiddlewareLockingTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenLockTimeoutIsZero_AndLockIsTaken_ShouldReturn409()
+    public async Task InvokeAsync_WhenLockWaitTimeoutIsZero_AndLockIsTaken_ShouldReturn409()
     {
         // Arrange
-        _options.LockTimeoutMilliseconds = 0;
+        _options.LockWaitTimeoutMilliseconds = 0;
         var context = CreateContextWithIdempotency("test-key");
 
         _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IdempotencyRecord?>(null));
-        _mockStore.TryAcquireLockAsync("test-key", 0, Arg.Any<CancellationToken>())
+        _mockStore.TryAcquireLockAsync("test-key", Arg.Any<int>(), Arg.Is(0), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(false));
 
         // Act
@@ -53,15 +53,15 @@ public class IdempotencyMiddlewareLockingTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenLockTimeoutIsPositive_AndLockIsTaken_ShouldThrowLockTimeoutException()
+    public async Task InvokeAsync_WhenLockWaitTimeoutIsPositive_AndLockIsTaken_ShouldThrowLockTimeoutException()
     {
         // Arrange
-        _options.LockTimeoutMilliseconds = 100;
+        _options.LockWaitTimeoutMilliseconds = 100;
         var context = CreateContextWithIdempotency("test-key");
 
         _mockStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IdempotencyRecord?>(null));
-        _mockStore.TryAcquireLockAsync("test-key", 100, Arg.Any<CancellationToken>())
+        _mockStore.TryAcquireLockAsync("test-key", Arg.Any<int>(), Arg.Is(100), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(false));
 
         // Act & Assert
