@@ -191,6 +191,12 @@ public class EfCoreIdempotencyStore<TContext> : IIdempotencyStore
                 // Concurrency violation (someone else inserted/updated)
                 shouldRetry = true;
             }
+            catch (InvalidOperationException ex) when (ex.InnerException is DbUpdateException)
+            {
+                // EF Core execution strategy might wrap transient failures (like deadlocks) 
+                // in InvalidOperationException. We treat them as concurrency retry signals.
+                shouldRetry = true;
+            }
             catch (Exception)
             {
                  // Unknown error

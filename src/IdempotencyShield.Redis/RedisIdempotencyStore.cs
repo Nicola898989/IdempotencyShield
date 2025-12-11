@@ -30,6 +30,7 @@ public class RedisIdempotencyStore : IIdempotencyStore
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = false
         };
+        _jsonOptions.Converters.Add(new Formatting.StringValuesJsonConverter());
     }
 
     /// <summary>
